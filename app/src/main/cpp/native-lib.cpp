@@ -50,7 +50,7 @@ int dotProductNeon(short* inputArray1, short* inputArray2, short len)
     const int elementsPerIteration = 4;
     int iterations = len / elementsPerIteration;
 
-    // 4-element vector of zeros to accumulate the result
+    // 4-element vector of zeroes to accumulate the result
     int32x4_t partialSumsNeon = vdupq_n_s32(0);
 
     // Main loop
@@ -86,7 +86,7 @@ int dotProductNeon2(short* inputArray1, short* inputArray2, short len)
     const int elementsPerIteration = 8;
     int iterations = len / elementsPerIteration;
 
-    // 4-element vectors of zeros to accumulate results within the unrolled loop
+    // 4-element vectors of zeroes to accumulate partial results within the unrolled loop
     int32x4_t partialSum1 = vdupq_n_s32(0);
     int32x4_t partialSum2 = vdupq_n_s32(0);
 
@@ -124,12 +124,60 @@ int dotProductNeon2(short* inputArray1, short* inputArray2, short len)
     return result;
 }
 
+int dotProductNeon3(short* inputArray1, short* inputArray2, short len)
+{
+    const int elementsPerIteration = 12;
+    int iterations = len / elementsPerIteration;
+
+    // 4-element vectors of zeroes to accumulate partial results within the unrolled loop
+    int32x4_t partialSum1 = vdupq_n_s32(0);
+    int32x4_t partialSum2 = vdupq_n_s32(0);
+    int32x4_t partialSum3 = vdupq_n_s32(0);
+
+    // Main loop (note that loop index goes through segments). Unroll 3-wide
+    for (int i = 0; i < iterations; ++i)
+    {
+        // Load vector elements to registers
+        int16x4_t v11 = vld1_s16(inputArray1);
+        int16x4_t v12 = vld1_s16(inputArray1 + 4);
+        int16x4_t v13 = vld1_s16(inputArray1 + 8);
+        int16x4_t v21 = vld1_s16(inputArray2);
+        int16x4_t v22 = vld1_s16(inputArray2 + 4);
+        int16x4_t v23 = vld1_s16(inputArray2 + 8);
+
+        partialSum1 = vmlal_s16(partialSum1, v11, v21);
+        partialSum2 = vmlal_s16(partialSum2, v12, v22);
+        partialSum3 = vmlal_s16(partialSum3, v13, v23);
+
+        inputArray1 += elementsPerIteration;
+        inputArray2 += elementsPerIteration;
+    }
+
+	// Now sum up the results of the 3 partial sums from the loop
+    int32x4_t partialSumsNeon = vaddq_s32(partialSum1, partialSum2);
+    partialSumsNeon = vaddq_s32(partialSumsNeon, partialSum3);
+
+	// Armv8 instruction to sum up all the elements into a single scalar
+	int result = vaddvq_s32(partialSumsNeon);
+
+	// Calculate the tail
+	int tailLength = len % elementsPerIteration;
+	while (tailLength--)
+	{
+		result += *inputArray1 * *inputArray2;
+		inputArray1++;
+		inputArray2++;
+	}
+
+    return result;
+}
+
 int dotProductNeon4(short* inputArray1, short* inputArray2, short len)
 {
     const int elementsPerIteration = 16;
     int iterations = len / elementsPerIteration;
 
-    // 4-element vector of zeros
+    // 4-element vectors of zeroes to accumulate partial results within the unrolled loop
     int32x4_t partialSum1 = vdupq_n_s32(0);
     int32x4_t partialSum2 = vdupq_n_s32(0);
     int32x4_t partialSum3 = vdupq_n_s32(0);
@@ -221,6 +269,14 @@ Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
     }
     auto elapsedMsTimeNeon2 = timer.elapsedMs();
 
+    int lastResultNeon3 = 0;
+    timer.reset();
+    for (int i = 0; i < trials; i++)
+    {
+        lastResultNeon3 = dotProductNeon3(ramp1, ramp2, rampLength);
+    }
+    auto elapsedMsTimeNeon3 = timer.elapsedMs();
+
     int lastResultNeon4 = 0;
     timer.reset();
     for (int i = 0; i < trials; i++)
@@ -245,12 +301,16 @@ Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
         \n\n----==== NEON 2x unrolling ====----\n\
         Result: %d\
         \nelapsedMs time: %f ms\
+        \n\n----==== NEON 3x unrolling ====----\n\
+        Result: %d\
+        \nelapsedMs time: %f ms\
         \n\n----==== NEON 4x unrolling ====----\n\
         Result: %d\
         \nelapsedMs time: %f ms",
         lastResult, elapsedMsTime,
         lastResultNeon, elapsedMsTimeNeon,
         lastResultNeon2, elapsedMsTimeNeon2,
+        lastResultNeon3, elapsedMsTimeNeon3,
         lastResultNeon4, elapsedMsTimeNeon4);
 
     return env->NewStringUTF(resultsString);
