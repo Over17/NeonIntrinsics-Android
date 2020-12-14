@@ -1,107 +1,178 @@
-#include <jni.h>
-#include <string>
 #include <arm_neon.h>
-#include <chrono>
+#include <ctime>
+#include <jni.h>
+#include <stdio.h>
 
-using namespace std;
+class Timer
+{
+private:
+    timespec beg;
+    timespec end;
 
-short* generateRamp(short startValue, short len) {
+public:
+    Timer() { clock_gettime(CLOCK_REALTIME, &beg); }
+
+    double elapsedMs() {
+        clock_gettime(CLOCK_REALTIME, &end);
+        return (end.tv_sec - beg.tv_sec) * 1000.f +
+            (end.tv_nsec - beg.tv_nsec) / 1000000.f;
+    }
+
+    void reset() { clock_gettime(CLOCK_REALTIME, &beg); }
+};
+
+static short* generateRamp(short startValue, short len)
+{
     short* ramp = new short[len];
 
-    for(short i = 0; i < len; i++) {
+    for (short i = 0; i < len; i++)
+    {
         ramp[i] = startValue + i;
     }
 
     return ramp;
 }
 
-double msElapsedTime(chrono::system_clock::time_point start) {
-    auto end = chrono::system_clock::now();
-
-    return chrono::duration_cast<chrono::milliseconds>(end - start).count();
-}
-
-chrono::system_clock::time_point now() {
-    return chrono::system_clock::now();
-}
-
-int dotProduct(short* vector1, short* vector2, short len) {
+int dotProductScalar(short* inputArray1, short* inputArray2, short len)
+{
     int result = 0;
 
-    for(short i = 0; i < len; i++) {
-        result += vector1[i] * vector2[i];
+    for (short i = 0; i < len; i++)
+    {
+        result += inputArray1[i] * inputArray2[i];
     }
 
     return result;
 }
 
-int dotProductNeon(short* vector1, short* vector2, short len) {
-    const short transferSize = 4;
-    short segments = len / transferSize;
+int dotProductNeon(short* inputArray1, short* inputArray2, short len)
+{
+    const int elementsPerIteration = 4;
+    int iterations = len / elementsPerIteration;
+
+    // 4-element vector of zeros to accumulate the result
+    int32x4_t partialSumsNeon = vdupq_n_s32(0);
+
+    // Main loop
+    for (int i = 0; i < iterations; ++i)
+    {
+        // Load vector elements to registers
+        int16x4_t v1 = vld1_s16(inputArray1);
+        int16x4_t v2 = vld1_s16(inputArray2);
+
+        partialSumsNeon = vmlal_s16(partialSumsNeon, v1, v2);
+
+        inputArray1 += elementsPerIteration;
+        inputArray2 += elementsPerIteration;
+    }
+
+	// Armv8 instruction to sum up all the elements into a single scalar
+	int result = vaddvq_s32(partialSumsNeon);
+
+	// Calculate the tail
+	int tailLength = len % elementsPerIteration;
+	while (tailLength--)
+	{
+		result += *inputArray1 * *inputArray2;
+		inputArray1++;
+		inputArray2++;
+	}
+
+    return result;
+}
+
+int dotProductNeon2(short* inputArray1, short* inputArray2, short len)
+{
+    const int elementsPerIteration = 8;
+    int iterations = len / elementsPerIteration;
+
+    // 4-element vectors of zeros to accumulate results within the unrolled loop
+    int32x4_t partialSum1 = vdupq_n_s32(0);
+    int32x4_t partialSum2 = vdupq_n_s32(0);
+
+    // Main loop, unrolled 2-wide
+    for (int i = 0; i < iterations; ++i)
+    {
+        // Load vector elements to registers
+        int16x4_t v11 = vld1_s16(inputArray1);
+        int16x4_t v12 = vld1_s16(inputArray1 + 4);
+        int16x4_t v21 = vld1_s16(inputArray2);
+        int16x4_t v22 = vld1_s16(inputArray2 + 4);
+
+        partialSum1 = vmlal_s16(partialSum1, v11, v21);
+        partialSum2 = vmlal_s16(partialSum2, v12, v22);
+
+        inputArray1 += elementsPerIteration;
+        inputArray2 += elementsPerIteration;
+    }
+
+	// Now sum up the results of the 2 partial sums from the loop
+    int32x4_t partialSumsNeon = vaddq_s32(partialSum1, partialSum2);
+
+	// Armv8 instruction to sum up all the elements into a single scalar
+	int result = vaddvq_s32(partialSumsNeon);
+
+	// Calculate the tail
+	int tailLength = len % elementsPerIteration;
+	while (tailLength--)
+	{
+		result += *inputArray1 * *inputArray2;
+		inputArray1++;
+		inputArray2++;
+	}
+
+    return result;
+}
+
+int dotProductNeon4(short* inputArray1, short* inputArray2, short len)
+{
+    const int elementsPerIteration = 16;
+    int iterations = len / elementsPerIteration;
 
     // 4-element vector of zeros
-    int32x4_t partialSumsNeon = vdupq_n_s32(0);
-    int32x4_t sum1 = vdupq_n_s32(0);
-    int32x4_t sum2 = vdupq_n_s32(0);
-    int32x4_t sum3 = vdupq_n_s32(0);
-    int32x4_t sum4 = vdupq_n_s32(0);
+    int32x4_t partialSum1 = vdupq_n_s32(0);
+    int32x4_t partialSum2 = vdupq_n_s32(0);
+    int32x4_t partialSum3 = vdupq_n_s32(0);
+    int32x4_t partialSum4 = vdupq_n_s32(0);
 
-    // Main loop (note that loop index goes through segments). Unroll with 4
-    int i = 0;
-    for(; i+3 < segments; i+=4) {
-        // Preload may help speed up sometimes
-        // asm volatile("prfm pldl1keep, [%0, #256]" : :"r"(vector1) :);
-        // asm volatile("prfm pldl1keep, [%0, #256]" : :"r"(vector2) :);
-
+    // Main loop (note that loop index goes through segments). Unroll 4-wide
+    for (int i = 0; i < iterations; ++i)
+    {
         // Load vector elements to registers
-        int16x8_t v11 = vld1q_s16(vector1);
-        int16x4_t v11_low = vget_low_s16(v11);
-        int16x4_t v11_high = vget_high_s16(v11);
+        int16x4_t v11 = vld1_s16(inputArray1);
+        int16x4_t v12 = vld1_s16(inputArray1 + 4);
+        int16x4_t v13 = vld1_s16(inputArray1 + 8);
+        int16x4_t v14 = vld1_s16(inputArray1 + 12);
+        int16x4_t v21 = vld1_s16(inputArray2);
+        int16x4_t v22 = vld1_s16(inputArray2 + 4);
+        int16x4_t v23 = vld1_s16(inputArray2 + 8);
+        int16x4_t v24 = vld1_s16(inputArray2 + 12);
 
-        int16x8_t v12 = vld1q_s16(vector2);
-        int16x4_t v12_low = vget_low_s16(v12);
-        int16x4_t v12_high = vget_high_s16(v12);
+        partialSum1 = vmlal_s16(partialSum1, v11, v21);
+        partialSum2 = vmlal_s16(partialSum2, v12, v22);
+        partialSum3 = vmlal_s16(partialSum3, v13, v23);
+        partialSum4 = vmlal_s16(partialSum4, v14, v24);
 
-        int16x8_t v21 = vld1q_s16(vector1+8);
-        int16x4_t v21_low = vget_low_s16(v21);
-        int16x4_t v21_high = vget_high_s16(v21);
-
-        int16x8_t v22 = vld1q_s16(vector2+8);
-        int16x4_t v22_low = vget_low_s16(v22);
-        int16x4_t v22_high = vget_high_s16(v22);
-
-        // Multiply and accumulate: partialSumsNeon += vector1Neon * vector2Neon
-        sum1 = vmlal_s16(sum1, v11_low, v12_low);
-        sum2 = vmlal_s16(sum2, v11_high, v12_high);
-        sum3 = vmlal_s16(sum3, v21_low, v22_low);
-        sum4 = vmlal_s16(sum4, v21_high, v22_high);
-
-        vector1 += 16;
-        vector2 += 16;
-    }
-    partialSumsNeon = sum1 + sum2 + sum3 + sum4;
-
-	// Sum up remain parts
-    int remain = len % transferSize;
-    for(i=0; i<remain; i++) {
-
-        int16x4_t vector1Neon = vld1_s16(vector1);
-        int16x4_t vector2Neon = vld1_s16(vector2);
-        partialSumsNeon = vmlal_s16(partialSumsNeon, vector1Neon, vector2Neon);
-
-        vector1 += 4;
-        vector2 += 4;
+        inputArray1 += elementsPerIteration;
+        inputArray2 += elementsPerIteration;
     }
 
-    // Store partial sums
-    int partialSums[transferSize];
-    vst1q_s32(partialSums, partialSumsNeon);
+	// Now sum up the results of the 4 partial sums from the loop
+    int32x4_t partialSumsNeon = vaddq_s32(partialSum1, partialSum2);
+    partialSumsNeon = vaddq_s32(partialSumsNeon, partialSum3);
+    partialSumsNeon = vaddq_s32(partialSumsNeon, partialSum4);
 
-    // Sum up partial sums
-    int result = 0;
-    for(int i = 0; i < transferSize; i++) {
-        result += partialSums[i];
-    }
+	// Armv8 instruction to sum up all the elements into a single scalar
+	int result = vaddvq_s32(partialSumsNeon);
+
+	// Calculate the tail
+	int tailLength = len % elementsPerIteration;
+	while (tailLength--)
+	{
+		result += *inputArray1 * *inputArray2;
+		inputArray1++;
+		inputArray2++;
+	}
 
     return result;
 }
@@ -109,11 +180,11 @@ int dotProductNeon(short* vector1, short* vector2, short len) {
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
         JNIEnv* env,
-        jobject /* this */) {
-
+        jobject /* this */)
+{
     // Ramp length and number of trials
-    const int rampLength = 1024;
-    const int trials = 10000;
+    const int rampLength = 1027;
+    const int trials = 1000000;
 
     // Generate two input vectors
     // (0, 1, ..., rampLength - 1)
@@ -125,32 +196,62 @@ Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
     // Invoke dotProduct and measure performance
     int lastResult = 0;
 
-    auto start = now();
-    for (int i = 0; i < trials; i++) {
-        lastResult = dotProduct(ramp1, ramp2, rampLength);
+    Timer timer;
+    for (int i = 0; i < trials; i++)
+    {
+        lastResult = dotProductScalar(ramp1, ramp2, rampLength);
     }
-    auto elapsedTime = msElapsedTime(start);
+    auto elapsedMsTime = timer.elapsedMs();
 
     // With NEON intrinsics
     // Invoke dotProductNeon and measure performance
     int lastResultNeon = 0;
-
-    start = now();
-    for (int i = 0; i < trials; i++) {
+    timer.reset();
+    for (int i = 0; i < trials; i++)
+    {
         lastResultNeon = dotProductNeon(ramp1, ramp2, rampLength);
     }
-    auto elapsedTimeNeon = msElapsedTime(start);
+    auto elapsedMsTimeNeon = timer.elapsedMs();
+
+    int lastResultNeon2 = 0;
+    timer.reset();
+    for (int i = 0; i < trials; i++)
+    {
+        lastResultNeon2 = dotProductNeon2(ramp1, ramp2, rampLength);
+    }
+    auto elapsedMsTimeNeon2 = timer.elapsedMs();
+
+    int lastResultNeon4 = 0;
+    timer.reset();
+    for (int i = 0; i < trials; i++)
+    {
+        lastResultNeon4 = dotProductNeon4(ramp1, ramp2, rampLength);
+    }
+    auto elapsedMsTimeNeon4 = timer.elapsedMs();
 
     // Clean up
-    delete ramp1, ramp2;
+    delete[] ramp1;
+    delete[] ramp2;
 
     // Display results
-    std::string resultsString =
-            "----==== NO NEON ====----\nResult: " + to_string(lastResult)
-            + "\nElapsed time: " + to_string((int) elapsedTime) + " ms"
-            + "\n\n----==== NEON ====----\n"
-            + "Result: " + to_string(lastResultNeon)
-            + "\nElapsed time: " + to_string((int) elapsedTimeNeon) + " ms";
+    char resultsString[1024];
+    snprintf(resultsString, 1024,
+        "----==== NO NEON ====----\n\
+        Result: %d\
+        \nelapsedMs time: %f ms\
+        \n\n----==== NEON, no unrolling ====----\n\
+        Result: %d\
+        \nelapsedMs time: %f ms\
+        \n\n----==== NEON 2x unrolling ====----\n\
+        Result: %d\
+        \nelapsedMs time: %f ms\
+        \n\n----==== NEON 4x unrolling ====----\n\
+        Result: %d\
+        \nelapsedMs time: %f ms",
+        lastResult, elapsedMsTime,
+        lastResultNeon, elapsedMsTimeNeon,
+        lastResultNeon2, elapsedMsTimeNeon2,
+        lastResultNeon4, elapsedMsTimeNeon4);
 
-    return env->NewStringUTF(resultsString.c_str());
+    return env->NewStringUTF(resultsString);
 }
