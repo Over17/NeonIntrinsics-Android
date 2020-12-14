@@ -50,7 +50,7 @@ int dotProductNeon(short* inputArray1, short* inputArray2, short len)
     const int elementsPerIteration = 4;
     int iterations = len / elementsPerIteration;
 
-    // 4-element vector of zeros to accumulate the result
+    // 4-element vector of zeroes to accumulate the result
     int32x4_t partialSumsNeon = vdupq_n_s32(0);
 
     // Main loop
@@ -86,7 +86,7 @@ int dotProductNeon2(short* inputArray1, short* inputArray2, short len)
     const int elementsPerIteration = 8;
     int iterations = len / elementsPerIteration;
 
-    // 4-element vectors of zeros to accumulate results within the unrolled loop
+    // 4-element vectors of zeroes to accumulate partial results within the unrolled loop
     int32x4_t partialSum1 = vdupq_n_s32(0);
     int32x4_t partialSum2 = vdupq_n_s32(0);
 
@@ -129,7 +129,7 @@ int dotProductNeon3(short* inputArray1, short* inputArray2, short len)
     const int elementsPerIteration = 12;
     int iterations = len / elementsPerIteration;
 
-    // 4-element vector of zeros
+    // 4-element vectors of zeroes to accumulate partial results within the unrolled loop
     int32x4_t partialSum1 = vdupq_n_s32(0);
     int32x4_t partialSum2 = vdupq_n_s32(0);
     int32x4_t partialSum3 = vdupq_n_s32(0);
@@ -177,7 +177,7 @@ int dotProductNeon4(short* inputArray1, short* inputArray2, short len)
     const int elementsPerIteration = 16;
     int iterations = len / elementsPerIteration;
 
-    // 4-element vector of zeros
+    // 4-element vectors of zeroes to accumulate partial results within the unrolled loop
     int32x4_t partialSum1 = vdupq_n_s32(0);
     int32x4_t partialSum2 = vdupq_n_s32(0);
     int32x4_t partialSum3 = vdupq_n_s32(0);
