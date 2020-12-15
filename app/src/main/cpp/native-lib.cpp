@@ -1,7 +1,11 @@
 #include <arm_neon.h>
 #include <ctime>
+#include <errno.h>
 #include <jni.h>
+#include <android/log.h>
 #include <stdio.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 class Timer
 {
@@ -346,11 +350,37 @@ int dotProductNeon6(short* inputArray1, short* inputArray2, short len)
     return result;
 }
 
+void SetCurrentThreadAffinity(unsigned int affinity)
+{
+	__android_log_print(ANDROID_LOG_INFO, "NeonIntrinsics", "Setting thread affinity to %d...\n", affinity);
+    int result = syscall(__NR_sched_setaffinity, gettid(), sizeof(affinity), &affinity);
+	if (result)
+	{
+		__android_log_print(ANDROID_LOG_ERROR, "NeonIntrinsics", "Error setting thread affinity, errno = %d\n", errno);
+	}
+}
+
+unsigned int GetLittleCoreAffinity()
+{
+	// Core 0 should be little
+	return 1;
+}
+
+unsigned int GetBigCoreAffinity()
+{
+	int coreCount = (int)sysconf(_SC_NPROCESSORS_CONF);
+	__android_log_print(ANDROID_LOG_INFO, "NeonIntrinsics", "CPU Core count = %d\n", coreCount);
+	return 1 << (coreCount - 1);
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
         JNIEnv* env,
         jobject /* this */)
 {
+	// Run the test on big cores. Use GetLittleCoreAffinity() to get it tested on little cores.
+	SetCurrentThreadAffinity(GetBigCoreAffinity());
+	
     // Ramp length and number of trials
     const int rampLength = 1027;
     const int trials = 1000000;
@@ -361,10 +391,18 @@ Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
     auto ramp1 = generateRamp(0, rampLength);
     auto ramp2 = generateRamp(100, rampLength);
 
+	// WARMUP!
+	// Do a full round of "scalar" calculations before measuring performance
+	// This will bump up the frequencies of the CPUs. Otherwise, the results of the first measurement will be unstable,
+	// because the governor may react to the increased load with a delay.
+    int lastResult = 0;
+    for (int i = 0; i < trials; i++)
+    {
+        lastResult = dotProductScalar(ramp1, ramp2, rampLength);
+    }
+	
     // Without NEON intrinsics
     // Invoke dotProduct and measure performance
-    int lastResult = 0;
-
     Timer timer;
     for (int i = 0; i < trials; i++)
     {
