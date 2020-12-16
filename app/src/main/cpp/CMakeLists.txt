@@ -17,6 +17,9 @@ find_library( # Sets the name of the path variable.
               # you want CMake to locate.
               log )
 			  
+find_library( android-lib
+              android )
+			  
 add_library( # Sets the name of the library.
              native-lib
 
@@ -34,4 +37,5 @@ add_library( # Sets the name of the library.
 
 target_link_libraries( # Specifies the target library.
                        native-lib
-					   ${log-lib} )
+					   ${log-lib} 
+					   ${android-lib} )
