@@ -9,7 +9,8 @@ result = ramp1[0] * ramp2[0] + ramp1[1] * ramp2[1] + ramp1[2] * ramp2[2] + ... +
 The dot product is calculated in the following ways:
 - scalar: most obvious way, just a cycle which accumulates the result using normal arithmetic operations iterating over the array
 - using Neon intrinsics: load 4x the array elements into a vector variable, then issue SMLAL Neon instruction which does multiply and accumulate; iterate over the array in 4x chunks, in the end process the tail (remainder of size divided by 4) using normal arithmentic operations
-- using same Neon intrinsics, but manually unroll the loop 2x, 3x, 4x, 5x and 6x
+- using same Neon intrinsics, but manually unroll the loop 2x, 3x, 4x and 6x
+- using SMLAL + SMLAL2 Neon intrinsics, so that you can load 128-bit vectors and then do multiply-accumulate on low and high halves of the vector, unrolled 2x (SMLAL+SMLAL2) and 4x (2xSMLAL+2xSMLAL2)
 
 Then, the every calculation is being repeated 1,000,000 times, and the duration is measured. The result is presented on the screen.
 
