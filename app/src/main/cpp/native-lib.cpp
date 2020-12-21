@@ -119,16 +119,6 @@ Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
     auto elapsedMsTimeNeon4 = timer.elapsedMs();
     ATrace_endSection();
 
-    ATrace_beginSection("dotProductNeon5");
-    int lastResultNeon5 = 0;
-    timer.reset();
-    for (int i = 0; i < trials; i++)
-    {
-        lastResultNeon5 = dotProductNeon5(ramp1, ramp2, rampLength);
-    }
-    auto elapsedMsTimeNeon5 = timer.elapsedMs();
-    ATrace_endSection();
-
     ATrace_beginSection("dotProductNeon6");
     int lastResultNeon6 = 0;
     timer.reset();
@@ -137,6 +127,26 @@ Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
         lastResultNeon6 = dotProductNeon6(ramp1, ramp2, rampLength);
     }
     auto elapsedMsTimeNeon6 = timer.elapsedMs();
+    ATrace_endSection();
+
+    ATrace_beginSection("dotProductNeon_with_SMLAL2_2wide");
+    int lastResultNeon_with_SMLAL2_2wide = 0;
+    timer.reset();
+    for (int i = 0; i < trials; i++)
+    {
+        lastResultNeon_with_SMLAL2_2wide = dotProductNeon_with_SMLAL2_2wide(ramp1, ramp2, rampLength);
+    }
+    auto elapsedMsTimeNeon_with_SMLAL2_2wide = timer.elapsedMs();
+    ATrace_endSection();
+
+    ATrace_beginSection("dotProductNeon_with_SMLAL2_4wide");
+    int lastResultNeon_with_SMLAL2_4wide = 0;
+    timer.reset();
+    for (int i = 0; i < trials; i++)
+    {
+        lastResultNeon_with_SMLAL2_4wide = dotProductNeon_with_SMLAL2_4wide(ramp1, ramp2, rampLength);
+    }
+    auto elapsedMsTimeNeon_with_SMLAL2_4wide = timer.elapsedMs();
     ATrace_endSection();
 
     // Clean up
@@ -161,10 +171,13 @@ Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
         \n\n----==== NEON 4x unrolling ====----\n\
         Result: %d\
         \nelapsedMs time: %f ms\
-        \n\n----==== NEON 5x unrolling ====----\n\
+        \n\n----==== NEON 6x unrolling ====----\n\
         Result: %d\
         \nelapsedMs time: %f ms\
-        \n\n----==== NEON 6x unrolling ====----\n\
+        \n\n----==== NEON SMLAL+SMLAL2 2-wide ====----\n\
+        Result: %d\
+        \nelapsedMs time: %f ms\
+        \n\n----==== NEON SMLAL+SMLAL2 4-wide ====----\n\
         Result: %d\
         \nelapsedMs time: %f ms",
         lastResult, elapsedMsTime,
@@ -172,8 +185,9 @@ Java_com_example_neonintrinsics_MainActivity_stringFromJNI(
         lastResultNeon2, elapsedMsTimeNeon2,
         lastResultNeon3, elapsedMsTimeNeon3,
         lastResultNeon4, elapsedMsTimeNeon4,
-        lastResultNeon5, elapsedMsTimeNeon5,
-        lastResultNeon6, elapsedMsTimeNeon6);
+        lastResultNeon6, elapsedMsTimeNeon6,
+        lastResultNeon_with_SMLAL2_2wide, elapsedMsTimeNeon_with_SMLAL2_2wide,
+        lastResultNeon_with_SMLAL2_4wide, elapsedMsTimeNeon_with_SMLAL2_4wide);
 
     return env->NewStringUTF(resultsString);
 }
