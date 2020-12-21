@@ -25,5 +25,6 @@ unsigned int GetBigCoreAffinity()
 {
 	int coreCount = (int)sysconf(_SC_NPROCESSORS_CONF);
 	__android_log_print(ANDROID_LOG_INFO, "NeonIntrinsics", "CPU Core count = %d\n", coreCount);
+	// Return mask containing one (last) core which should be the biggest
 	return 1 << (coreCount - 1);
 }
