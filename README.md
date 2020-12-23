@@ -26,7 +26,8 @@ c:\android-ndk-r21d\toolchains\llvm\prebuilt\windows-x86_64\aarch64-linux-androi
 ```
 
 For test purpose, the APK has been run on a Pixel 3XL. Here is the result screenshot:
-![Results screenshot](results.jpg)
+
+![Results screenshot](results.png)
 
 Now let's analyze the results and the assembly:
 1.	"No Neon" is significantly faster than "Neon, no unrolling" and matches "Neon, 2x unrolling" results. Checking the assembly for scalar version, it's clear that the compiler has vectorized the loop, unrolled it 2wide and used SMLAL instruction instead of MUL + ADD:
